@@ -1,6 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
+use std::str;
 use tokio::{
-    io::{AsyncWriteExt, Result},
+    io::{AsyncBufReadExt, AsyncWriteExt, Result},
     net::TcpStream,
 };
 use tokio_tungstenite::{
@@ -27,8 +28,6 @@ impl WebSocket {
             .send(Message::Text(message.clone()))
             .await
             .unwrap();
-
-        println!("sent");
     }
 
     async fn receive(&mut self) -> Option<Message> {
@@ -36,7 +35,6 @@ impl WebSocket {
             Some(message) => {
                 let data = message.unwrap();
                 let message = Message::from(data.clone());
-                println!("data: {:?}", message);
                 tokio::io::stdout().write(&data.into_data()).await.unwrap();
                 Some(message)
             }
@@ -50,6 +48,7 @@ impl WebSocket {
     // public methods
     pub async fn close(&mut self) {
         self.ws_stream.close(None).await.unwrap();
+        println!("Connection closed");
     }
 
     pub async fn active_symbols(&mut self, active_symbols: ActiveSymbols) {
@@ -64,12 +63,15 @@ impl WebSocket {
         .to_string()
             + "\n";
         self.send(message.clone()).await;
-        self.receive().await;
+        let res = self.receive().await;
+        println!("{:?}", res);
     }
 
     pub async fn forget(&mut self, id: String) {
         self.send(format!(r#"{{"forget": "{}"}}"#, id).to_string() + "\n")
             .await;
+        let res = self.receive().await;
+        println!("{:?}", res);
     }
 
     pub async fn ping(&mut self, interval: u64) {
@@ -79,19 +81,17 @@ impl WebSocket {
         .to_string()
             + "\n";
 
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_millis(interval)).await;
-            self.send(message.clone()).await;
-            self.receive().await;
-        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(interval)).await;
+        self.send(message.clone()).await;
+        let res = self.receive().await;
+        println!("{:?}", res);
     }
 
     pub async fn ticks(&mut self, symbol: String) {
         let message = format!(r#"{{"ticks": "{}", "subscribe": 1}}"#, symbol).to_string() + "\n";
         self.send(message.clone()).await;
-        loop {
-            let message = self.receive().await;
-        }
+        let res = self.receive().await;
+        println!("{:?}", res);
     }
 }
 
@@ -102,9 +102,49 @@ async fn main() -> Result<()> {
     let (ws_stream, _response) = connect_async(url).await.expect("Failed to connect");
     println!("WebSocket handshake has been successfully completed");
     let mut ws = WebSocket::new(ws_stream);
-    ws.ping(2000).await;
-    // ws.ticks("R_50".to_string()).await;
-    // ws.active_symbols(ActiveSymbols::Brief).await;
 
-    Ok(())
+    loop {
+        print!("\n> ");
+        let mut reader = tokio::io::BufReader::new(tokio::io::stdin());
+        let mut buffer = Vec::new();
+        let _ = reader.read_until(b'\n', &mut buffer).await;
+        if let Ok(line) = str::from_utf8(&buffer) {
+            let line = line.trim();
+            match line.split_whitespace().next().unwrap() {
+                "exit" => {
+                    ws.close().await;
+                    return Ok(());
+                }
+                "active_symbols" => {
+                    let active_symbols = line.split_whitespace().last().unwrap().to_string();
+                    match active_symbols.as_str() {
+                        "brief" => ws.active_symbols(ActiveSymbols::Brief).await,
+                        "full" => ws.active_symbols(ActiveSymbols::Full).await,
+                        _ => {
+                            println!("Invalid command");
+                        }
+                    }
+                }
+                "forget" => {
+                    let id = line.split_whitespace().last().unwrap().to_string();
+                    ws.forget(id).await;
+                }
+                "ping" => {
+                    let interval = line.split_whitespace().last().unwrap().to_string();
+                    match interval.parse::<u64>() {
+                        Ok(interval_ms) => ws.ping(interval_ms).await,
+                        Err(_) => ws.ping(0).await,
+                    }
+                }
+                "ticks" => {
+                    let symbol = line.split_whitespace().last().unwrap().to_string();
+                    ws.ticks(symbol).await;
+                }
+                _ => {
+                    println!("Invalid command");
+                }
+            }
+        }
+        buffer.clear();
+    }
 }
