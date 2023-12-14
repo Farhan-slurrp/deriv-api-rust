@@ -1,7 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use std::str;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, Result},
+    io::{AsyncBufReadExt, Result},
     net::TcpStream,
 };
 use tokio_tungstenite::{
@@ -31,17 +31,10 @@ impl WebSocket {
     }
 
     async fn receive(&mut self) -> Option<Message> {
-        match self.ws_stream.next().await {
-            Some(message) => {
-                let data = message.unwrap();
-                let message = Message::from(data.clone());
-                tokio::io::stdout().write(&data.into_data()).await.unwrap();
-                Some(message)
-            }
-            None => {
-                println!("No message received");
-                None
-            }
+        let res = self.ws_stream.next().await;
+        match res {
+            Some(Ok(msg)) => Some(msg),
+            _ => None,
         }
     }
 
