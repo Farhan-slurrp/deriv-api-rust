@@ -49,11 +49,6 @@ impl WebSocket {
     }
 
     // public methods
-    pub async fn close<'a>(&'a mut self) {
-        self.ws_stream.close(None).await.unwrap();
-        println!("Connection closed");
-    }
-
     pub async fn active_symbols<'a>(&'a mut self, active_symbols: ActiveSymbols) {
         let active_symbols = match active_symbols {
             ActiveSymbols::Brief => "brief",
@@ -69,6 +64,11 @@ impl WebSocket {
         let res = self.receive().await;
         let res_json = self.string_to_json(res.unwrap().to_text().unwrap().to_string());
         self.print_json(res_json);
+    }
+
+    pub async fn close<'a>(&'a mut self) {
+        self.ws_stream.close(None).await.unwrap();
+        println!("Connection closed");
     }
 
     pub async fn forget<'a>(&'a mut self, id: String) {
