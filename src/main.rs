@@ -45,7 +45,7 @@ impl WebSocket {
     }
 
     fn print_json<'a>(&'a mut self, json: serde_json::Value) {
-        println!("{:?}", json);
+        println!("{}", serde_json::to_string_pretty(&json).unwrap());
     }
 
     // public methods
@@ -78,10 +78,7 @@ impl WebSocket {
     }
 
     pub async fn ping<'a>(&'a mut self, interval: u64) {
-        let message = r#"{
-            "ping": 1
-        }"#
-        .to_string();
+        let message = r#"{"ping": 1}"#.to_string();
 
         tokio::time::sleep(tokio::time::Duration::from_millis(interval)).await;
         self.send(message.clone()).await;
@@ -102,10 +99,7 @@ impl WebSocket {
     }
 
     pub async fn website_status<'a>(&'a mut self) {
-        let message = r#"{
-            "website_status": 1
-        }"#
-        .to_string();
+        let message = r#"{"website_status": 1}"#.to_string();
         self.send(message.clone()).await;
         let res = self.receive().await;
         let res_json = self.string_to_json(res.unwrap().to_text().unwrap().to_string());
