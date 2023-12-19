@@ -23,14 +23,15 @@ impl WebSocket {
         Self { ws_stream }
     }
 
-    async fn send(&mut self, message: String) {
-        self.ws_stream
-            .send(Message::Text(message.clone()))
-            .await
-            .unwrap();
+    async fn send<'a>(&'a mut self, message: String) {
+        let res = self.ws_stream.send(Message::Text(message.clone())).await;
+        match res {
+            Ok(_) => println!("Sent: {}", message),
+            Err(e) => println!("Error sending message: {}", e),
+        }
     }
 
-    async fn receive(&mut self) -> Option<Message> {
+    async fn receive<'a>(&'a mut self) -> Option<Message> {
         let res = self.ws_stream.next().await;
         match res {
             Some(Ok(msg)) => Some(msg),
@@ -38,53 +39,77 @@ impl WebSocket {
         }
     }
 
+    fn string_to_json<'a>(&'a mut self, string: String) -> serde_json::Value {
+        let json: serde_json::Value = serde_json::from_str(&string).unwrap();
+        json
+    }
+
+    fn print_json<'a>(&'a mut self, json: serde_json::Value) {
+        println!("{:?}", json);
+    }
+
     // public methods
-    pub async fn close(&mut self) {
+    pub async fn close<'a>(&'a mut self) {
         self.ws_stream.close(None).await.unwrap();
         println!("Connection closed");
     }
 
-    pub async fn active_symbols(&mut self, active_symbols: ActiveSymbols) {
+    pub async fn active_symbols<'a>(&'a mut self, active_symbols: ActiveSymbols) {
         let active_symbols = match active_symbols {
             ActiveSymbols::Brief => "brief",
             ActiveSymbols::Full => "full",
         };
         let message = format!(
-            r#"{{"active_symbols": "{}", "product_type": "basic"}}\n"#,
+            r#"{{"active_symbols": "{}", "product_type": "basic"}}"#,
             active_symbols
         )
         .to_string()
             + "\n";
         self.send(message.clone()).await;
         let res = self.receive().await;
-        println!("{:?}", res);
+        let res_json = self.string_to_json(res.unwrap().to_text().unwrap().to_string());
+        self.print_json(res_json);
     }
 
-    pub async fn forget(&mut self, id: String) {
-        self.send(format!(r#"{{"forget": "{}"}}"#, id).to_string() + "\n")
+    pub async fn forget<'a>(&'a mut self, id: String) {
+        self.send(format!(r#"{{"forget": {}}}"#, id).to_string())
             .await;
-        let res = self.receive().await;
-        println!("{:?}", res);
+        self.receive().await;
     }
 
-    pub async fn ping(&mut self, interval: u64) {
+    pub async fn ping<'a>(&'a mut self, interval: u64) {
         let message = r#"{
             "ping": 1
         }"#
-        .to_string()
-            + "\n";
+        .to_string();
 
         tokio::time::sleep(tokio::time::Duration::from_millis(interval)).await;
         self.send(message.clone()).await;
         let res = self.receive().await;
-        println!("{:?}", res);
+        let res_json = self.string_to_json(res.unwrap().to_text().unwrap().to_string());
+        self.print_json(res_json);
     }
 
-    pub async fn ticks(&mut self, symbol: String) {
-        let message = format!(r#"{{"ticks": "{}", "subscribe": 1}}"#, symbol).to_string() + "\n";
+    pub async fn ticks<'a>(&'a mut self, symbol: String) {
+        let message = format!(r#"{{"ticks": "{}"}}"#, symbol).to_string();
         self.send(message.clone()).await;
         let res = self.receive().await;
-        println!("{:?}", res);
+        let res_str = res.clone().unwrap().to_text().unwrap().to_string();
+        let res_json = self.string_to_json(res_str);
+        let subscription_id = res_json["subscription"]["id"].to_string();
+        self.print_json(res_json);
+        self.forget(subscription_id).await;
+    }
+
+    pub async fn website_status<'a>(&'a mut self) {
+        let message = r#"{
+            "website_status": 1
+        }"#
+        .to_string();
+        self.send(message.clone()).await;
+        let res = self.receive().await;
+        let res_json = self.string_to_json(res.unwrap().to_text().unwrap().to_string());
+        self.print_json(res_json);
     }
 }
 
@@ -133,6 +158,7 @@ async fn main() -> Result<()> {
                     let symbol = line.split_whitespace().last().unwrap().to_string();
                     ws.ticks(symbol).await;
                 }
+                "website_status" => ws.website_status().await,
                 _ => {
                     println!("Invalid command");
                 }

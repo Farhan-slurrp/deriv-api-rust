@@ -10,3 +10,4 @@ futures-util = { version = "0.3.28", default-features = false, features = ["sink
 tokio-tungstenite = { version = "0.17", features = ["native-tls"] }
 tokio = { version = "1.0.0", default-features = false, features = ["full"] }
 url = "2.2.2"
+serde_json = "*"
