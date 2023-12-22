@@ -1,1 +1,1 @@
-DerivAPI Client writtern in Rust with tokio-tungstenite
+DerivAPI Client written in Rust with tokio-tungstenite
