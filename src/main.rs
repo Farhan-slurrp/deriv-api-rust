@@ -1,10 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json;
-use std::{
-    str,
-    sync::{Arc, Mutex},
-    vec,
-};
+use std::{cell::RefCell, rc::Rc, str, vec};
 use tokio::{
     io::{AsyncBufReadExt, Result},
     net::TcpStream,
@@ -132,7 +128,7 @@ async fn main() -> Result<()> {
 
     let (ws_stream, _response) = connect_async(url).await.expect("Failed to connect");
     println!("WebSocket handshake has been successfully completed");
-    let ws = Arc::new(Mutex::new(WebSocket::new(ws_stream)));
+    let ws = Rc::new(RefCell::new(WebSocket::new(ws_stream)));
 
     loop {
         print!("\n> ");
@@ -143,14 +139,14 @@ async fn main() -> Result<()> {
             let line = line.trim();
             match line.split_whitespace().next().unwrap() {
                 "exit" => {
-                    ws.lock().unwrap().close().await;
+                    ws.borrow_mut().close().await;
                     return Ok(());
                 }
                 "active_symbols" => {
                     let active_symbols = line.split_whitespace().last().unwrap().to_string();
                     match active_symbols.as_str() {
                         x if vec!["brief", "full"].contains(&x) => {
-                            ws.lock().unwrap().active_symbols(x.to_string()).await
+                            ws.borrow_mut().active_symbols(x.to_string()).await
                         }
                         _ => {
                             println!("Invalid command");
@@ -159,20 +155,20 @@ async fn main() -> Result<()> {
                 }
                 "forget" => {
                     let id = line.split_whitespace().last().unwrap().to_string();
-                    ws.lock().unwrap().forget(id).await;
+                    ws.borrow_mut().forget(id).await;
                 }
                 "ping" => {
                     let sleep = line.split_whitespace().last().unwrap().to_string();
                     match sleep.parse::<u64>() {
-                        Ok(sleep_ms) => ws.lock().unwrap().ping(sleep_ms).await,
-                        Err(_) => ws.lock().unwrap().ping(0).await,
+                        Ok(sleep_ms) => ws.borrow_mut().ping(sleep_ms).await,
+                        Err(_) => ws.borrow_mut().ping(0).await,
                     }
                 }
                 "ticks" => {
                     let symbol = line.split_whitespace().last().unwrap().to_string();
-                    ws.lock().unwrap().ticks(symbol).await;
+                    ws.borrow_mut().ticks(symbol).await;
                 }
-                "website_status" => ws.lock().unwrap().website_status().await,
+                "website_status" => ws.borrow_mut().website_status().await,
                 _ => {
                     println!("Invalid command");
                 }
